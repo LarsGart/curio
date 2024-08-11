@@ -3,11 +3,13 @@ from fasthtml.common import *
 import arxiv
 from collections import defaultdict
 from datetime import datetime
+import re
 
 app, rt = fast_app(
     pico=True,
-    hdrs=( # should link to index.css
+    hdrs=(
         Link(rel="stylesheet", href="index.css"),
+        Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"),
     )
 )
 client = arxiv.Client()
@@ -15,14 +17,15 @@ cache = defaultdict(lambda: None)
 
 def create_paper_card(paper, expanded=False):
     title = H2(
-        paper.title,
+        clean_title(paper.title),
         hx_get=f"/{'collapse' if expanded else 'expand'}/{paper.get_short_id()}",
         hx_target="closest article",
         hx_swap="outerHTML",
-        style="cursor: pointer; font-size: 1.2rem; width: 61.8vw;"
+        style="user-select: none; cursor: pointer; font-size: 1.2rem; width: 61.8vw;",
     )
     
     title_components = Div(
+        get_git_link(paper.summary, paper.comment),
         A(
             "🔗", href=paper.pdf_url, target="_blank",
             style="font-size: 1em; margin-right: 0.5em; text-decoration: none;"
@@ -43,12 +46,23 @@ def create_paper_card(paper, expanded=False):
         *content,
         id=f"paper-{paper.get_short_id()}",
         cls="card box",
-        style="margin-left: 1rem;",
+        style="margin-left: 1rem; width: 63.5vw;",
     )
+
+def clean_title(title):
+    return title.replace(' and ', ' & ')
 
 def published_when(paper):
     delta = datetime.now(paper.published.tzinfo) - paper.published
-    if delta.days > 0:
+    if 365*2 > delta.days > 365:
+        return f"{delta.days//365} year old"
+    elif delta.days > 365:
+        return f"{delta.days//365} years old"
+    elif 30*2 > delta.days > 30:
+        return f"{delta.days//30} month old"
+    elif delta.days > 30:
+        return f"{delta.days//30} months old"
+    elif delta.days > 0:
         return f"{delta.days} days old"
     elif delta.seconds > 3600:
         return f"{delta.seconds//3600} hours old"
@@ -58,11 +72,24 @@ def published_when(paper):
 def truncate(s):
     return s[:s.find('.', s.find('.', s.find('.')+1)+1)+1] + '..'
 
+def get_git_link(summary, comment):
+    summary = summary or ''
+    comment = comment or ''
+    if (link := re.findall(r'(https?://github.com/[^ ]+)', comment) or re.findall(r'(https?://github.com/[^ ]+)', summary)):
+        if '%' in (link := link[0]):
+            link = link[:link.find('%')]
+
+        return A(
+                   I(cls="fa fa-github"),
+                   href=link, target="_blank",
+                   style="margin-right: 0.5em; text-decoration: none;"
+                )
+    
 @app.get("/")
 def home():
     search = arxiv.Search(
         query="chatgpt",
-        max_results=20,
+        max_results=50,
         sort_by=arxiv.SortCriterion.SubmittedDate
     )
     results = list(client.results(search))
@@ -79,14 +106,30 @@ def home():
                 hx_get="/?search={value}",
                 hx_swap="outerHTML",
             ),
-            style="display: flex; align-items: center; margin-left: 1.4vw;"
+            style="display: flex; align-items: center; margin-left: 1.4vw; margin-bottom: 2.6%;"
         ),
         Div(
             *[create_paper_card(r) for r in results],
             id="content"
         ),
+
+        
+            Div(
+                H2("Interests", style="font-size: 1.5em; margin-bottom: 1rem;"),
+                Ul(
+                    Li("asdasdasdasdasd🍎", draggable='true'),
+                    Li("🍌"),
+                    Li("🍇"),
+                    Li("🍉"),
+                    Li("🍍"),
+                    style="list-style-type: none; padding: 0; margin: 0;"
+                ),
+                cls="card box",
+                style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;" # switch this to 
+            ),
+
         cls="container",
-        style="max-width: 64vw; margin: 0; padding: 0;"
+        style="max-width: 64vw; margin: 0; padding: 0;",
     )
 
 @app.get("/expand/{paper_id}")
