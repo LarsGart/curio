@@ -1,0 +1,14 @@
+body{ /*https://cssgradient.io/gradient-backgrounds/*/
+    background: #0F2027;
+    background: -webkit-linear-gradient(to right, #2C5364, #203A43, #0F2027); 
+    background: linear-gradient(300deg, #2C5364, #203A43, #0F2027);
+}
+ 
+.box { /*https://hype4.academy/tools/glassmorphism-generator*/
+    background: rgba( 255, 255, 255, 0.1 );
+    box-shadow: 0 8px 32px 0 rgba( 31, 38, 135, 0.37 );
+    backdrop-filter: blur( 1px );
+    -webkit-backdrop-filter: blur( 1px );
+    border-radius: 10px;
+    border: 1px solid rgba( 255, 255, 255, 0.18 );
+  }
