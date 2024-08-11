@@ -14,15 +14,38 @@ app, rt = fast_app(
 )
 client = arxiv.Client()
 cache = defaultdict(lambda: None)
+bookmarked_categories = defaultdict(lambda: []) # each of these keys will be a category (e..g cs.LG), and 
+
+# tables = database('data/interests.db').t
+# interests = tables.interests
+# if not interests in tables:
+#     interests.create(name=str, papers=str, pk='name')
+# Interest = interests.dataclass()
+
+@app.get("/bookmark/{paper_id}")
+def upsert_bookmark(paper):
+    bookmarked_categories[paper.primary_category].append(paper)
 
 def create_paper_card(paper, expanded=False):
-    title = H2(
-        clean_title(paper.title),
-        hx_get=f"/{'collapse' if expanded else 'expand'}/{paper.get_short_id()}",
-        hx_target="closest article",
-        hx_swap="outerHTML",
-        style="user-select: none; cursor: pointer; font-size: 1.2rem; width: 61.8vw;",
-    )
+    icon = "fa fa-bookmark-o" if paper not in bookmarked_categories[paper.primary_category] else "fa fa-bookmark"
+    bookmark_title = Div(
+                A(
+                    I(
+                        cls=icon,
+                        style="font-size: 1.5em;", # when this is clicked, add to bookmarks
+                        hx_post=f"/bookmark/{paper.get_short_id()}",
+                    ),
+                    style="margin-right: 0.7em;", # mark the icon bigger: font-size: 1.5em;
+                ),
+                H2(
+                    clean_title(paper.title),
+                    hx_get=f"/{'collapse' if expanded else 'expand'}/{paper.get_short_id()}",
+                    hx_target="closest article",
+                    hx_swap="outerHTML",
+                    style="user-select: none; cursor: pointer; font-size: 1.2rem; width: 61.8vw;",
+                ),
+                style="display: flex; align-items: start;",
+            )
     
     title_components = Div(
         get_git_link(paper.summary, paper.comment),
@@ -35,7 +58,7 @@ def create_paper_card(paper, expanded=False):
         style="display: flex; align-items: baseline; margin-top: 0.5em; font-size: 1em;",
     )
 
-    content = [title, title_components]
+    content = [bookmark_title, title_components]
     
     if expanded:
         content.extend([
@@ -73,17 +96,23 @@ def truncate(s):
     return s[:s.find('.', s.find('.', s.find('.')+1)+1)+1] + '..'
 
 def get_git_link(summary, comment):
+    link = None
     summary = summary or ''
     comment = comment or ''
-    if (link := re.findall(r'(https?://github.com/[^ ]+)', comment) or re.findall(r'(https?://github.com/[^ ]+)', summary)):
-        if '%' in (link := link[0]):
-            link = link[:link.find('%')]
-
+    mask = r'(https?://github.com/[^ ]+)'
+    if (found_link := re.findall(mask, summary)):
+        link = found_link[0]
+    elif (found_link := re.findall(mask, comment)):
+        link = found_link[0]
+    if link and '%' in link:
+        link = link[:link.find('%')]
+    if link:
         return A(
-                   I(cls="fa fa-github"),
-                   href=link, target="_blank",
-                   style="margin-right: 0.5em; text-decoration: none;"
-                )
+            I(cls="fa fa-github"),
+            href=link.rstrip('.'), target="_blank",
+            style="margin-right: 0.5em; text-decoration: none;"
+        )
+    return None
     
 @app.get("/")
 def home():
@@ -112,25 +141,46 @@ def home():
             *[create_paper_card(r) for r in results],
             id="content"
         ),
-
         
-            Div(
-                H2("Interests", style="font-size: 1.5em; margin-bottom: 1rem;"),
-                Ul(
-                    Li("asdasdasdasdasd🍎", draggable='true'),
-                    Li("🍌"),
-                    Li("🍇"),
-                    Li("🍉"),
-                    Li("🍍"),
-                    style="list-style-type: none; padding: 0; margin: 0;"
-                ),
-                cls="card box",
-                style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;" # switch this to 
-            ),
+        *get_sidebar(),
 
         cls="container",
         style="max-width: 64vw; margin: 0; padding: 0;",
     )
+
+def get_sidebar():
+    # return [
+    #     Div(
+    #         H2("Interests", style="font-size: 1.5em; margin-bottom: 1rem;"),
+    #             Ul(
+    #                 Li("Conformal Prediction", draggable='true'),
+    #                 Li("KANs"),
+    #                 Li("Federated Learning"),
+    #                 style="list-style-type: none; padding: 0; margin: 0;"
+    #             ),
+    #         Input(
+    #             type="text",
+    #             placeholder="Add Interest",
+    #             style="width: 10vw; height: 2.5em; margin-top: 2%;",
+    #             hx_post="/add-interest",
+    #             hx_swap="outerHTML",
+    #         ),
+    #     cls="card box",
+    #     style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;"
+    #     ),
+    # ]
+    return [
+        Div(
+            H2("Bookmarks", style="font-size: 1.5em; margin-bottom: 1rem;"),  # create a bookmark card for each category, and a subcard for each paper in each category
+            *[Div(
+                H3(f"{category} ({len(papers)})"),
+                *[create_paper_card(paper) for paper in papers],
+                style="margin-bottom: 1rem;"
+            ) for category, papers in bookmarked_categories.items()],
+            cls="card box",
+            style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;"
+        ),
+    ]
 
 @app.get("/expand/{paper_id}")
 def expand_summary(paper_id: str):
@@ -152,5 +202,3 @@ def collapse_summary(paper_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-    
