@@ -1,9 +1,21 @@
-from fasthtml import FastHTML, picolink
+'''
+The hx_target attribute tells HTMX where to put the result. If no target is specified it replaces the element that triggered the request. The hx_swap attribute specifies how it adds the result to the page. Useful options are:
+
+innerHTML: Replace the target element’s content with the result.
+outerHTML: Replace the target element with the result.
+beforebegin: Insert the result before the target element.
+beforeend: Insert the result inside the target element, after its last child.
+afterbegin: Insert the result inside the target element, before its first child.
+afterend: Insert the result after the target element.
+delete: Remove the target element.
+'''
+
 from fasthtml.common import *
 import arxiv
 from collections import defaultdict
 from datetime import datetime
 import re
+import graphviz
 
 app, rt = fast_app(
     pico=True,
@@ -16,11 +28,52 @@ client = arxiv.Client()
 cache = defaultdict(lambda: None)
 bookmarked_categories = defaultdict(lambda: []) # each of these keys will be a category (e..g cs.LG), and 
 
-# tables = database('data/interests.db').t
-# interests = tables.interests
-# if not interests in tables:
-#     interests.create(name=str, papers=str, pk='name')
-# Interest = interests.dataclass()
+# You can use any database you want; it'll be easier if you pick a lib that supports the MiniDataAPI spec.
+# Here we are using SQLite, with the FastLite library, which supports the MiniDataAPI spec.
+db = database('data/paperlab.db')
+dt = db.t
+users = dt.users
+preferences = dt.preferences
+
+# print(f'user table: {users}')
+# print(f'preferences table: {preferences}')
+
+# '''
+# @patch
+# def create(
+#     self:Table,
+#     columns: Dict[str, Any]=None, pk: Any=None, foreign_keys=None,
+#     column_order: List[str]|None=None, not_null: Iterable[str]|None=None, defaults: Dict[str, Any]|None=None,
+#     hash_id: str|None=None, hash_id_columns: Iterable[str]|None=None,
+#     extracts: Union[Dict[str, str], List[str], NoneType]=None,
+#     if_not_exists: bool = False, replace: bool = False, ignore: bool = False,
+#     transform: bool = False, strict: bool = False,
+#     **kwargs):
+#     if not columns: columns={}
+#     columns = {**columns, **kwargs}
+#     return self._orig_create(
+#         columns, pk=pk, foreign_keys=foreign_keys, column_order=column_order, not_null=not_null,
+#         defaults=defaults, hash_id=hash_id, hash_id_columns=hash_id_columns, extracts=extracts,
+#         if_not_exists=if_not_exists, replace=replace, ignore=ignore, transform=transform, strict=strict)
+# '''
+# '''https://answerdotai.github.io/fastlite/'''
+# if (preferences := dt.get('preferences')) is None:
+#     print('preferences table not found')
+#     users.create(dict(name=str, pwd=str), pk='name')
+#     preferences = dt.create(
+#         name=str, primary_category=str, sequence=int, user_id=str,
+#         pk='id', foreign_keys=dict(user_id='users.name')
+#     )
+
+# # for i in range(10):
+# #     # users.insert({'name': f'user{i}', 'pwd': f'pwd{i}'})
+# #     preferences.insert(name=f'pref{i}') # TypeError: list.insert() takes no keyword arguments. Change to 
+# #     preferences.insert(name=f'pref{i}')
+
+
+# print(db.q('SELECT * FROM users'))
+# print('===========')
+# print(db.q('SELECT * FROM preferences'))
 
 @app.get("/bookmark/{paper_id}")
 def upsert_bookmark(paper):
@@ -115,9 +168,9 @@ def get_git_link(summary, comment):
     return None
     
 @app.get("/")
-def home():
+async def home():
     search = arxiv.Search(
-        query="chatgpt",
+        query="pathology",
         max_results=50,
         sort_by=arxiv.SortCriterion.SubmittedDate
     )
@@ -127,7 +180,7 @@ def home():
     
     return Main(
         Div(
-            H1("cur.io", style="font-size: 2.5em; margin-right: 1rem; margin-top: 2%;"),
+            H1("paperlab", style="font-size: 2.5em; margin-right: 1rem; margin-top: 2%;"),
             Input(
                 type="search",
                 placeholder="Search...",
@@ -149,38 +202,38 @@ def home():
     )
 
 def get_sidebar():
-    # return [
-    #     Div(
-    #         H2("Interests", style="font-size: 1.5em; margin-bottom: 1rem;"),
-    #             Ul(
-    #                 Li("Conformal Prediction", draggable='true'),
-    #                 Li("KANs"),
-    #                 Li("Federated Learning"),
-    #                 style="list-style-type: none; padding: 0; margin: 0;"
-    #             ),
-    #         Input(
-    #             type="text",
-    #             placeholder="Add Interest",
-    #             style="width: 10vw; height: 2.5em; margin-top: 2%;",
-    #             hx_post="/add-interest",
-    #             hx_swap="outerHTML",
-    #         ),
-    #     cls="card box",
-    #     style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;"
-    #     ),
-    # ]
     return [
         Div(
-            H2("Bookmarks", style="font-size: 1.5em; margin-bottom: 1rem;"),  # create a bookmark card for each category, and a subcard for each paper in each category
-            *[Div(
-                H3(f"{category} ({len(papers)})"),
-                *[create_paper_card(paper) for paper in papers],
-                style="margin-bottom: 1rem;"
-            ) for category, papers in bookmarked_categories.items()],
-            cls="card box",
-            style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;"
+            H2("Interests", style="font-size: 1.5em; margin-bottom: 1rem;"),
+                Ul(
+                    Li("Conformal Prediction", draggable='true'),
+                    Li("KANs"),
+                    Li("Federated Learning"),
+                    style="list-style-type: none; padding: 0; margin: 0;"
+                ),
+            Input(
+                type="text",
+                placeholder="Add Interest",
+                style="width: 10vw; height: 2.5em; margin-top: 2%;",
+                hx_post="/add-interest",
+                hx_swap="outerHTML",
+            ),
+        cls="card box",
+        style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;"
         ),
     ]
+    # return [
+    #     Div(
+    #         H2("Bookmarks", style="font-size: 1.5em; margin-bottom: 1rem;"),  # create a bookmark card for each category, and a subcard for each paper in each category
+    #         *[Div(
+    #             H3(f"{category} ({len(papers)})"),
+    #             *[create_paper_card(paper) for paper in papers],
+    #             style="margin-bottom: 1rem;"
+    #         ) for category, papers in bookmarked_categories.items()],
+    #         cls="card box",
+    #         style="position: fixed; right: 0; top: 0; margin-right: 1.5rem; margin-top: 1.3%; padding: 1rem;"
+    #     ),
+    # ]
 
 @app.get("/expand/{paper_id}")
 def expand_summary(paper_id: str):
